@@ -1,0 +1,117 @@
+﻿@page "/todo"
+
+@using Microsoft.Maui.Storage
+@using System.IO
+@using System.Text.Json
+@using MySqlConnector
+
+<h3> <b><u>Todo (@todos.Count(todo => !todo.IsDone))</u></b></h3>
+
+<button @onclick="Save">Save</button>
+<button @onclick="Load">Load</button> 
+<br/>
+
+<ul class="list-unstyled">
+    @foreach (var todo in todos)
+    {
+        <li>
+            <input type="checkbox" @bind="todo.IsDone" />
+            <input @bind="todo.Title" class="large-textbox" />
+        </li>
+    }
+</ul>
+
+<input placeholder="Something todo" @bind="newTodo" class="large-textbox" />
+<button @onclick="AddTodo">Add todo</button>
+
+@code {
+    private List<TodoItem> todos = new();
+    private string? newTodo;
+
+    private void AddTodo()
+    {
+        if (!string.IsNullOrWhiteSpace(newTodo))
+        {
+            todos.Add(new TodoItem { Title = newTodo });
+            newTodo = string.Empty;
+        }
+    }
+
+    private async Task Save()
+    {
+        MySqlConnectionStringBuilder builder = new MySqlConnectionStringBuilder
+            {
+                Server = "localhost",
+                UserID = "root",
+                Password = "password",
+                Database = "demo1",
+            };
+
+        using MySqlConnection connection = new MySqlConnection(builder.ConnectionString);
+        await connection.OpenAsync();
+
+        foreach (var todo in todos)
+        {
+            if (todo.IsDone)
+            {
+                string deleteQuery = "DELETE FROM getItDone WHERE description = @description";
+                using MySqlCommand deleteCmd = new MySqlCommand(deleteQuery, connection);
+                deleteCmd.Parameters.AddWithValue("@description", todo.Title);
+                await deleteCmd.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                string insertQuery = "INSERT INTO getItDone (description) VALUES (@description) " +
+                                     "ON DUPLICATE KEY UPDATE description = @description";
+                using MySqlCommand insertCmd = new MySqlCommand(insertQuery, connection);
+                insertCmd.Parameters.AddWithValue("@description", todo.Title);
+                await insertCmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        todos.RemoveAll(todo => todo.IsDone);
+
+        await connection.CloseAsync();
+    }
+
+    private async Task Load()
+    {
+        MySqlConnectionStringBuilder builder = new MySqlConnectionStringBuilder
+            {
+                Server = "localhost",
+                UserID = "root",
+                Password = "password",
+                Database = "demo1",
+            };
+
+        using MySqlConnection connection = new MySqlConnection(builder.ConnectionString);
+        await connection.OpenAsync();
+
+        string query = "SELECT description FROM getItDone";
+        using MySqlCommand cmd = new MySqlCommand(query, connection);
+        using MySqlDataReader reader = await cmd.ExecuteReaderAsync();
+
+        todos.Clear();
+        while (await reader.ReadAsync())
+        {
+            todos.Add(new TodoItem { Title = reader.GetString(0), IsDone = false });
+        }
+
+        await connection.CloseAsync();
+    }
+
+    private void OnChange(TodoItem todo)
+    {
+        if (todo.IsDone)
+        {
+            todos.Remove(todo);
+            Save().GetAwaiter().GetResult();
+        }
+    }
+
+    public class TodoItem
+    {
+        public string Title { get; set; }
+        public bool IsDone { get; set; }
+    }
+}

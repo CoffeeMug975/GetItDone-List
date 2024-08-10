@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\build\Get-It-Done-List.props" />
+</Project>
